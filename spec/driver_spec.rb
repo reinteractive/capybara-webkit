@@ -825,11 +825,25 @@ describe Capybara::Driver::Webkit do
     end
   end
 
+  context "empty document is ok" do
+    before(:all) do
+      @app = lambda do |env|
+          [200,
+            { 'Content-Type' => 'text/html', 'Content-Length' => "0" },
+            [""]]
+      end
+    end
+
+    it "should have the right status code" do
+      subject.status_code.should == 200
+    end
+  end
+
   context "error app" do
     before(:all) do
       @app = lambda do |env|
         if env['PATH_INFO'] == "/error"
-          [404, {}, []]
+          [404, {'Content-Type' => 'text/html'}, []]
         else
           body = <<-HTML
             <html><body>
@@ -863,7 +877,7 @@ describe Capybara::Driver::Webkit do
         if env['PATH_INFO'] == "/error"
           body = "error"
           sleep(1)
-          [304, {}, []]
+          [404, {'Content-Type' => 'text/html'}, []]
         else
           body = <<-HTML
             <html><body>

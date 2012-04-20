@@ -36,6 +36,8 @@ HEADERS = \
   SetProxy.h \
   NullCommand.h \
   PageLoadingCommand.h \
+  SetTimeout.h \
+  GetTimeout.h \
 
 SOURCES = \
   CurrentUrl.cpp \
@@ -73,6 +75,8 @@ SOURCES = \
   SetProxy.cpp \
   NullCommand.cpp \
   PageLoadingCommand.cpp \
+  SetTimeout.cpp \
+  GetTimeout.cpp \
 
 RESOURCES = webkit_server.qrc
 QT += network webkit

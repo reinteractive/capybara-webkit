@@ -14,6 +14,7 @@ class Capybara::Driver::Webkit
                         $stdout
       @ignore_ssl_errors = options[:ignore_ssl_errors]
       @skip_image_loading = options[:skip_image_loading]
+      @blacklist_file = options[:blacklist_file]
       start_server
       connect
     end
@@ -109,6 +110,14 @@ class Capybara::Driver::Webkit
       command "Render", path, width, height
     end
 
+    def set_timeout(timeout_in_seconds)
+      command "SetTimeout", timeout_in_seconds
+    end
+
+    def get_timeout
+      command("GetTimeout").to_i
+    end
+
     def set_cookie(cookie)
       command "SetCookie", cookie
     end
@@ -169,6 +178,10 @@ class Capybara::Driver::Webkit
       cmdline = [server_path]
       cmdline << "--ignore-ssl-errors" if @ignore_ssl_errors
       cmdline << "--skip-image-loading" if @skip_image_loading
+      if @blacklist_file
+        cmdline << "--blacklist-file"
+        cmdline << @blacklist_file
+      end
       pipe = IO.popen(cmdline.join(" "))
       [pipe, pipe.pid]
     end
@@ -223,7 +236,12 @@ class Capybara::Driver::Webkit
       if result.nil?
         raise WebkitNoResponseError, "No response received from the server."
       elsif result != 'ok' 
-        raise WebkitInvalidResponseError, read_response
+        case response = read_response
+        when "timeout"
+          raise Capybara::TimeoutError
+        else
+          raise WebkitInvalidResponseError, response
+        end
       end
 
       result

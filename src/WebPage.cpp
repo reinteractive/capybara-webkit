@@ -12,6 +12,7 @@ WebPage::WebPage(QObject *parent) : QWebPage(parent) {
   loadJavascript();
   setUserStylesheet();
 
+  m_timeout = 0;
   m_loading = false;
   this->setCustomNetworkAccessManager();
 
@@ -79,6 +80,14 @@ void WebPage::injectJavascriptHelpers() {
 
 bool WebPage::shouldInterruptJavaScript() {
   return false;
+}
+
+int WebPage::getTimeout() {
+  return m_timeout;
+}
+
+void WebPage::setTimeout(int timeout) {
+  m_timeout = timeout;
 }
 
 QVariant WebPage::invokeCapybaraFunction(const char *name, QStringList &arguments) {
@@ -208,6 +217,11 @@ void WebPage::ignoreSslErrors(QNetworkReply *reply, const QList<QSslError> &erro
 
 void WebPage::setIgnoreSslErrors(bool ignore) {
   m_ignoreSslErrors = ignore;
+}
+
+void WebPage::setUrlBlacklist(QStringList blacklist) {
+  NetworkAccessManager* networkAccessManager = qobject_cast<NetworkAccessManager*>(this->networkAccessManager());
+  networkAccessManager->setUrlBlacklist(blacklist);
 }
 
 bool WebPage::ignoreSslErrors() {

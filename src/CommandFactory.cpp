@@ -22,6 +22,8 @@
 #include "ConsoleMessages.h"
 #include "RequestedUrl.h"
 #include "CurrentUrl.h"
+#include "SetTimeout.h"
+#include "GetTimeout.h"
 
 CommandFactory::CommandFactory(WebPage *page, QObject *parent) : QObject(parent) {
   m_page = page;

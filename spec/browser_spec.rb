@@ -2,12 +2,15 @@ require 'spec_helper'
 require 'self_signed_ssl_cert'
 require 'stringio'
 require 'capybara/driver/webkit/browser'
+require 'capybara/driver/webkit/socket_debugger'
 require 'socket'
 require 'base64'
 
 describe Capybara::Driver::Webkit::Browser do
 
+  let(:blacklist_file) { File.join(File.dirname(__FILE__), 'support/test_blacklist.txt') }
   let(:browser) { Capybara::Driver::Webkit::Browser.new }
+  let(:browser_with_blacklist) { Capybara::Driver::Webkit::Browser.new(blacklist_file: blacklist_file)}
   let(:browser_ignore_ssl_err) {
     Capybara::Driver::Webkit::Browser.new(:ignore_ssl_errors => true)
   }
@@ -152,6 +155,178 @@ describe Capybara::Driver::Webkit::Browser do
     it "should not load images in css when skip_image_loading is true" do
       browser_skip_images.visit("http://#{@host}:#{@port}/")
       @received_requests.find {|r| r =~ %r{/path/to/bgimage} }.should be_nil
+    end
+  end
+
+  context "uses the url blacklist" do
+    before(:each) do
+      # set up minimal HTTP server
+      @host = "127.0.0.1"
+      @server = TCPServer.new(@host, 0)
+      @port = @server.addr[1]
+
+      @server_thread = Thread.new(@server) do |serv|
+        while conn = serv.accept do
+          # read request
+          request = []
+          until (line = conn.readline.strip).empty?
+            request << line
+          end
+
+          request = request.join("\n")
+          content = if request =~ %r{GET /frame}
+            "<p>Inner</p>"
+          else
+            <<-HTML
+              <iframe src="http://example.com/path" id="frame1"></iframe>
+              <iframe src="http://example.org/path/to/file" id="frame2"></iframe>
+              <iframe src="/frame" id="frame3"></iframe>
+            HTML
+          end
+
+          html = <<-HTML
+            <html>
+              <head>
+              </head>
+              <body>
+                #{content}
+              </body>
+            </html>
+          HTML
+          conn.write "HTTP/1.1 200 OK\r\n"
+          conn.write "Content-Type: text/html\r\n"
+          conn.write "Content-Length: %i\r\n" % html.size
+          conn.write "\r\n"
+          conn.write html
+          conn.write("\r\n\r\n")
+          conn.close
+        end
+      end
+    end
+
+    after(:each) do
+      @server_thread.kill
+      @server.close
+    end
+
+    it "should not fetch urls blocked by host" do
+      browser_with_blacklist.visit("http://#{@host}:#{@port}")
+      browser_with_blacklist.frame_focus('frame1')
+      browser_with_blacklist.find('//body').should be_empty
+    end
+
+    it "should not fetch urls blocked by full paths" do
+      browser_with_blacklist.visit("http://#{@host}:#{@port}")
+      browser_with_blacklist.frame_focus('frame2')
+      browser_with_blacklist.find('//body').should be_empty
+    end
+
+    it "should not block non-blacklisted urls" do
+      browser_with_blacklist.visit("http://#{@host}:#{@port}")
+      browser_with_blacklist.frame_focus('frame3')
+      browser_with_blacklist.find('//p').should_not be_empty
+    end
+  end
+
+  context "timeout on long requests" do
+    before(:each) do
+      # set up minimal HTTPS server
+      @host = "127.0.0.1"
+      @server = TCPServer.new(@host, 0)
+      @port = @server.addr[1]
+
+      # set up SSL layer
+
+      @server_thread = Thread.new(@server) do |serv|
+        while conn = serv.accept do
+          begin
+            # read request
+            request = []
+            until (line = conn.readline.strip).empty?
+              request << line
+            end
+
+            request = request.join("\n")
+
+            if request =~ %r{POST /form}
+              sleep(4)
+            else
+              sleep(2)
+            end
+
+            # write response
+            html = <<-HTML
+            <html>
+              <body>
+                <form action="/form" method="post">
+                  <input type="submit" value="Submit"/>
+                </form>
+              </body>
+            </html>
+            HTML
+            conn.write "HTTP/1.1 200 OK\r\n"
+            conn.write "Content-Type:text/html\r\n"
+            conn.write "Content-Length: %i\r\n" % html.size
+            conn.write "\r\n"
+            conn.write html
+            conn.write("\r\n\r\n")
+            conn.close
+          rescue 
+            conn.close
+          end
+        end
+      end
+    end
+
+    after(:each) do
+      @server_thread.kill
+      @server.close
+    end
+
+    it "should not raise a timeout error when zero" do
+      browser.set_timeout(0)
+      lambda { browser.visit("http://#{@host}:#{@port}/") }.should_not raise_error(Capybara::TimeoutError)
+    end
+
+    it "should raise a timeout error" do
+      browser.set_timeout(1)
+      lambda { browser.visit("http://#{@host}:#{@port}/") }.should raise_error(Capybara::TimeoutError)
+    end
+
+    it "should not raise an error when the timeout is high enough" do
+      browser.set_timeout(10)
+      lambda { browser.visit("http://#{@host}:#{@port}/") }.should_not raise_error(Capybara::TimeoutError)
+    end
+
+    it "should set the timeout for each request" do
+      browser.set_timeout(10)
+      lambda { browser.visit("http://#{@host}:#{@port}/") }.should_not raise_error(Capybara::TimeoutError)
+      browser.set_timeout(1)
+      lambda { browser.visit("http://#{@host}:#{@port}/") }.should raise_error(Capybara::TimeoutError) 
+    end
+
+    it "should set the timeout for each request" do
+      browser.set_timeout(1)
+      lambda { browser.visit("http://#{@host}:#{@port}/") }.should raise_error(Capybara::TimeoutError)
+      browser.reset!
+      browser.set_timeout(10)
+      lambda { browser.visit("http://#{@host}:#{@port}/") }.should_not raise_error(Capybara::TimeoutError)
+    end
+
+    it "should raise a timeout on a slow form" do
+      browser.set_timeout(3)
+      browser.visit("http://#{@host}:#{@port}/")
+      browser.status_code.should == 200
+      browser.set_timeout(1)
+      browser.command("Node", "click", browser.find("//input").first)
+      lambda { browser.status_code }.should raise_error(Capybara::TimeoutError)
+    end
+
+    it "get timeout" do
+      browser.set_timeout(10)
+      browser.get_timeout.should == 10
+      browser.set_timeout(3)
+      browser.get_timeout.should == 3
     end
   end
 

@@ -2,11 +2,13 @@
 #include "Command.h"
 #include "WebPage.h"
 
+#include <iostream>
+
 PageLoadingCommand::PageLoadingCommand(Command *command, WebPage *page, QObject *parent) : QObject(parent) {
   m_page = page;
   m_command = command;
   m_pageLoadingFromCommand = false;
-  m_pageSuccess = true;
+  m_pageSuccess = false;
   m_pendingResponse = NULL;
   connect(m_page, SIGNAL(loadStarted()), this, SLOT(pageLoadingFromCommand()));
   connect(m_page, SIGNAL(pageFinished(bool)), this, SLOT(pendingLoadFinished(bool)));
