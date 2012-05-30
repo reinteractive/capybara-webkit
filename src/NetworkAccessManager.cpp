@@ -9,6 +9,16 @@ NetworkAccessManager::NetworkAccessManager(QObject *parent):QNetworkAccessManage
 QNetworkReply* NetworkAccessManager::createRequest(QNetworkAccessManager::Operation operation, const QNetworkRequest &request, QIODevice * outgoingData = 0) {
   QNetworkRequest new_request(request);
 
+  /* Since we use headers to set the authentication,
+   * we can get into a state where QT caches invalid/blank
+   * credentials for a page, which then overwrites the
+   * Authorization header. This was reported as a bug
+   * in  http://help.stillalive.com/discussions/questions/145-intermittently-failing-scripts
+   *
+   * Setting AuthenticationReuse to manual prevents this overwrite.
+   */
+  new_request.setAttribute(QNetworkRequest::AuthenticationReuseAttribute,  QNetworkRequest::Manual);
+
   if (this->isBlacklisted(new_request.url())) {
     return this->noOpRequest();
   } else {
