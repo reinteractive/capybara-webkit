@@ -16,8 +16,18 @@ QNetworkReply* NetworkAccessManager::createRequest(QNetworkAccessManager::Operat
    * in  http://help.stillalive.com/discussions/questions/145-intermittently-failing-scripts
    *
    * Setting AuthenticationReuse to manual prevents this overwrite.
+   *
+   * We can only do this if a proxy is not set, since proxy-auth relies
+   * on AuthenticationReuse.
+   * Since we only everset a proxy to QNetworkProxy::HttpProxy we can
+   * be specific about this. It also won't affect Still Alive since we
+   * don't use a proxy, but it gets the tests passing at least.
+   *
+   * TODO: fix this once authentication caches can be cleared
    */
-  new_request.setAttribute(QNetworkRequest::AuthenticationReuseAttribute,  QNetworkRequest::Manual);
+  if (this->proxy().type() != QNetworkProxy::HttpProxy) {
+    new_request.setAttribute(QNetworkRequest::AuthenticationReuseAttribute,  QNetworkRequest::Manual);
+  }
 
   if (this->isBlacklisted(new_request.url())) {
     return this->noOpRequest();
